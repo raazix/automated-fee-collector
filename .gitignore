@@ -1,0 +1,16 @@
+# Environments
+.env
+.venv
+__pycache__/
+
+# Output and Logs
+output/
+logs/
+screenshots/
+
+# User Data
+data/members.xlsx
+assets/qr_payment.png
+
+# WhatsApp Profile
+.chrome_wa_profile/
