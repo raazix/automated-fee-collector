@@ -61,5 +61,6 @@ python scheduler.py
 ## For Developers
 If you are a developer looking to understand how the WhatsApp Web File Upload Intercept was engineered, or if you want to modify the core automation engine, please refer to the [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) and the `research_scripts/` directory for detailed explanations of the code's logic.
 
+
 ## Disclaimer
 This script is for educational purposes. Excessive or spam messaging may result in your WhatsApp account being banned by Meta. Use responsible delays between messages and only message contacts who have opted in.

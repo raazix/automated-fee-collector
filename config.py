@@ -25,8 +25,8 @@ MONTH_COLUMNS   = [
 COUNTRY_CODE    = os.environ.get("COUNTRY_CODE", "91")
 
 # Seconds to wait between messages (keeps it human-looking)
-SEND_DELAY_MIN  = 5
-SEND_DELAY_MAX  = 8
+SEND_DELAY_MIN  = 2
+SEND_DELAY_MAX  = 4
 
 # Seconds to wait for WhatsApp Web to load
 WA_LOAD_TIMEOUT = 60

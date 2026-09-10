@@ -23,11 +23,32 @@ import config
 logger = logging.getLogger(__name__)
 
 WA_URL    = "https://web.whatsapp.com/send?phone={phone}&text={text}"
-CHAT_CSS  = 'div[aria-label="Chat list"]'
+CHAT_CSS  = '#pane-side, div[aria-label="Chat list"], div[aria-label="Chats"], div[id="side"], div[data-tab="3"]'
 BOX_CSS   = 'div[contenteditable="true"][data-tab="10"]'
 BOX_CSS2  = 'div[contenteditable="true"][data-lexical-editor="true"]'
 SEND_CSS  = 'button[data-testid="send"], span[data-testid="send"], span[data-icon="send"], div[aria-label="Send"], button[aria-label="Send"], div[aria-label^="Send "], span[aria-label^="Send "], button[aria-label^="Send "]'
 BAD_PHONE = "Phone number shared via url is invalid"
+
+
+def _detect_chrome_major_version() -> Optional[int]:
+    """Detect installed Google Chrome major version dynamically on Windows."""
+    try:
+        import winreg
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for subkey in (
+                r"Software\Google\Chrome\BLBeacon",
+                r"Software\Wow6432Node\Google\Update\Clients\{8A69D345-D564-463c-AFF1-A69D9E530F96}",
+            ):
+                try:
+                    with winreg.OpenKey(root, subkey) as key:
+                        val, _ = winreg.QueryValueEx(key, "version")
+                        if val:
+                            return int(val.split(".")[0])
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
 
 
 class WhatsAppSender:
@@ -55,15 +76,22 @@ class WhatsAppSender:
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
 
-        self.driver = uc.Chrome(options=opts, version_main=147)
+        major_ver = _detect_chrome_major_version()
+        if major_ver:
+            logger.info(f"Detected Chrome major version: {major_ver}")
+            self.driver = uc.Chrome(options=opts, version_main=major_ver)
+        else:
+            self.driver = uc.Chrome(options=opts)
+
         self.driver.maximize_window()
         self.driver.get("https://web.whatsapp.com")
 
         logger.info(
             "Waiting for WhatsApp Web...\n"
-            "  >>> FIRST RUN ONLY: Scan the QR code in the browser. <<<"
+            "  >>> FIRST RUN ONLY: Scan the QR code in the browser window with your phone. <<<"
         )
-        WebDriverWait(self.driver, config.WA_LOAD_TIMEOUT * 2).until(
+        login_timeout = max(180, config.WA_LOAD_TIMEOUT * 2)
+        WebDriverWait(self.driver, login_timeout).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, CHAT_CSS))
         )
         logger.info("WhatsApp Web is ready.")
@@ -145,46 +173,60 @@ class WhatsAppSender:
             }
         """)
 
-        # 1. Click the paperclip button
-        try:
-            attach_selector = (
-                'div[title="Attach"], '
-                'button[title="Attach"], '
-                'div[aria-label="Attach"], '
-                'button[aria-label="Attach"], '
-                '[data-testid="clip"], '
-                'span[data-icon="clip"], '
-                'span[data-icon="plus"]'
-            )
-            attach = wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, attach_selector)
-                )
-            )
-            time.sleep(1.0) # wait a moment for animation
+        # 1. Click paperclip and wait for 'Photos & videos'
+        photo_btn = None
+        photo_selector = (
+            'button[aria-label="Photos & videos"], '
+            'li[aria-label="Photos & videos"], '
+            'span[aria-label="Photos & videos"], '
+            'button[aria-label="Photos and videos"], '
+            'li[aria-label="Photos and videos"], '
+            'div[aria-label="Photos & videos"], '
+            'div[aria-label="Photos and videos"]'
+        )
+        attach_selector = (
+            'div[title="Attach"], '
+            'button[title="Attach"], '
+            'div[aria-label="Attach"], '
+            'button[aria-label="Attach"], '
+            '[data-testid="clip"], '
+            'span[data-icon="clip"], '
+            'span[data-icon="plus"]'
+        )
+
+        for clip_attempt in range(2):
             try:
-                attach.click()
-            except Exception:
-                self.driver.execute_script("arguments[0].click();", attach)
+                attach = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, attach_selector))
+                )
+                time.sleep(0.3)
+                try:
+                    attach.click()
+                except Exception:
+                    self.driver.execute_script("arguments[0].click();", attach)
+
+                logger.info("  Paperclip clicked.")
                 
-            logger.info("  Paperclip clicked.")
-            time.sleep(1.5)
-        except Exception as e:
-            logger.warning(f"  Paperclip not found: {e}")
+                short_wait = WebDriverWait(self.driver, 5)
+                photo_btn = short_wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, photo_selector))
+                )
+                if photo_btn:
+                    break
+            except Exception:
+                logger.warning(f"  Attach menu attempt {clip_attempt + 1} retry...")
+                time.sleep(0.8)
+
+        if not photo_btn:
+            logger.warning("  Photos & videos button not found after retries.")
             return False
 
-        # 2. Click 'Photos & videos' to trigger the specific file input
         try:
-            photo_btn = wait.until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, 'button[aria-label="Photos & videos"], li[aria-label="Photos & videos"], span[aria-label="Photos & videos"]')
-                )
-            )
             self.driver.execute_script("arguments[0].click();", photo_btn)
             logger.info("  Clicked 'Photos & videos'.")
-            time.sleep(1.0)
+            time.sleep(0.4)
         except Exception as e:
-            logger.warning(f"  Photos & videos button not found: {e}")
+            logger.warning(f"  Failed clicking Photos & videos: {e}")
             return False
 
         # 3. Retrieve the intercepted input
@@ -205,14 +247,14 @@ class WhatsAppSender:
                 """,
                 inp
             )
-            time.sleep(0.3)
+            time.sleep(0.2)
             inp.send_keys(abs_path)
             logger.info("  Path sent to intercepted input — waiting for preview...")
-            time.sleep(4.5)
+            time.sleep(1.2)
 
             # Confirm preview loaded — Send button becomes active
             try:
-                WebDriverWait(self.driver, 20).until(
+                WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable(
                         (By.CSS_SELECTOR, SEND_CSS)
                     )
@@ -238,9 +280,9 @@ class WhatsAppSender:
         use_url_text = not has_image
         encoded = quote(message) if use_url_text else ""
         self.driver.get(WA_URL.format(phone=phone, text=encoded))
-        time.sleep(random.uniform(5.0, 7.0))
+        time.sleep(random.uniform(1.5, 2.5))
 
-        wait = WebDriverWait(self.driver, 30)
+        wait = WebDriverWait(self.driver, 20)
 
         # Check for invalid phone
         try:
@@ -297,8 +339,8 @@ class WhatsAppSender:
                                 """, caption_box, line)
                             if idx < len(lines) - 1:
                                 caption_box.send_keys(Keys.SHIFT + Keys.ENTER)
-                                time.sleep(0.15)
-                        time.sleep(1.0)
+                                time.sleep(0.05)
+                        time.sleep(0.3)
                         
                         logger.info("  Sending image with caption...")
                         sent = False
@@ -331,15 +373,20 @@ class WhatsAppSender:
                                 pass
                                 
                         if sent:
-                            time.sleep(3.0)
+                            time.sleep(1.2)
                             logger.info("  Image sent.")
+                            return True
                         else:
                             logger.warning("  Send button not found or failed to click.")
+                            return False
                     else:
                         logger.warning("  Caption box not found.")
+                        return False
                 except Exception as e:
                     logger.warning(f"  Failed to set caption or click send: {e}")
+                    return False
             else:
                 logger.warning("  Image not sent — preview failed.")
+                return False
 
         return True

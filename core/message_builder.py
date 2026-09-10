@@ -31,12 +31,12 @@ def build_message(name, due_amount, ref=None,
     if prev_balance > 0.0:
         breakdown = (
             f"Previous Year Pending: \u20b9{_fmt(prev_balance)}\n"
-            f"This Year Dues: \u20b9{_fmt(current_due)}\n"
-            f"Total Outstanding till {ref.strftime('%B %Y')}: \u20b9{_fmt(due_amount)}"
+            f"This Year Dues (till {ref.strftime('%B')}): \u20b9{_fmt(current_due)}\n\n"
+            f"*Total Outstanding till {ref.strftime('%B %Y')}:* \u20b9{_fmt(due_amount)}"
         )
         parts.append(breakdown)
     else:
-        parts.append(f"Your monthly SSF due till {ref.strftime('%B %Y')} is \u20b9{_fmt(due_amount)}")
+        parts.append(f"*Your monthly SSF due till {ref.strftime('%B %Y')} is \u20b9{_fmt(due_amount)}*")
 
     parts.extend([
         "Please pay using the QR scanner above and send the payment screenshot once done.",
@@ -47,11 +47,16 @@ def build_message(name, due_amount, ref=None,
 
 
 def build_admin_summary(total, sent, no_due, failed,
-                        total_pending, failed_names, ref=None):
+                        total_pending, failed_names, pending_list=None, ref=None):
     ref = ref or datetime.now()
     fn = ""
     if failed_names:
         fn = "\n\nFailed:\n" + "\n".join(f"  - {n}" for n in failed_names)
+        
+    pl = ""
+    if pending_list:
+        pl = "\n\nPending Members:\n" + "\n".join(f"  - {n}: \u20b9{_fmt(amt)}" for n, amt in pending_list)
+
     return (
         f"Fee Collection Summary - {ref.strftime('%B %Y')}\n\n"
         f"Total members : {total}\n"
@@ -60,4 +65,5 @@ def build_admin_summary(total, sent, no_due, failed,
         f"Failed        : {failed}\n"
         f"Total pending : INR {total_pending:,.2f}"
         f"{fn}"
+        f"{pl}"
     )

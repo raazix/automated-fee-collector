@@ -20,6 +20,9 @@ from core.message_builder import build_message, build_admin_summary
 from core.reporter        import generate_report
 
 # ── Logging: writes to both console and a log file ──────────────────────────
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 os.makedirs(config.LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(
     config.LOGS_DIR,
@@ -63,9 +66,16 @@ def _save_progress(sent_phones):
         }, f)
 
 
-def run(dry_run=False):
+def run(dry_run=False, reset=False):
     ref = datetime.now()
     logger.info(f"=== WA Fee Collector | {ref.strftime('%d %b %Y %H:%M')} ===")
+
+    if reset and os.path.exists(PROGRESS_FILE):
+        try:
+            os.remove(PROGRESS_FILE)
+            logger.info("Progress reset: cleared previous sent history.")
+        except Exception as e:
+            logger.warning(f"Could not remove progress file: {e}")
 
     # 1. Load member data from Excel
     df = load_members()
@@ -151,6 +161,10 @@ def run(dry_run=False):
             failed_names = list(
                 dues_df[dues_df["phone"].isin(failed_phones)]["name"]
             )
+            pending_list = [
+                (row["name"], row["due_amount"])
+                for _, row in dues_df[dues_df["due_amount"] > 0].iterrows()
+            ]
             summary = build_admin_summary(
                 total=len(dues_df),
                 sent=len(sent_phones),
@@ -158,6 +172,7 @@ def run(dry_run=False):
                 failed=len(failed_phones),
                 total_pending=float(dues_df["due_amount"].sum()),
                 failed_names=failed_names,
+                pending_list=pending_list,
                 ref=ref,
             )
             wa.send(
@@ -178,5 +193,9 @@ if __name__ == "__main__":
         "--dry-run", action="store_true",
         help="Preview dues without opening WhatsApp"
     )
+    parser.add_argument(
+        "--reset", action="store_true",
+        help="Clear progress and reset sent tracking"
+    )
     args = parser.parse_args()
-    run(dry_run=args.dry_run)
+    run(dry_run=args.dry_run, reset=args.reset)
