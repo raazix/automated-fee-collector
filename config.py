@@ -1,4 +1,5 @@
 import os
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,6 +21,11 @@ MONTH_COLUMNS   = [
     "May", "June", "July", "August",
     "September", "October", "November", "December"
 ]
+
+# Google Sheets Integration
+GOOGLE_SHEET_URL = os.environ.get("GOOGLE_SHEET_URL", "")
+GOOGLE_CREDENTIALS_PATH = os.environ.get("GOOGLE_CREDENTIALS_PATH", "credentials.json")
+COL_LAST_REMINDER = "Last Reminder Sent"
 
 # Change to your country code — India is 91
 COUNTRY_CODE    = os.environ.get("COUNTRY_CODE", "91")

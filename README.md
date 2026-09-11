@@ -9,8 +9,8 @@ This project solves the repetitive task of manually tracking member payments and
 ## Overview
 
 The system automates the entire fee collection workflow:
-1. **Member Data** is read from a local Excel file.
-2. **Fee Calculation** determines active months, previous balances, and total paid.
+1. **Member Data** is read directly from a live Google Sheet (or a local Excel fallback).
+2. **Fee Calculation** determines active months, previous balances, skips 'NA' months for partial-year members, and calculates total paid.
 3. **Outstanding Balance Detection** filters out fully paid members.
 4. **Personalized Message Generation** formats a breakdown of what is owed.
 5. **WhatsApp Automation** launches an undetected Chrome session.
@@ -20,10 +20,12 @@ The system automates the entire fee collection workflow:
 
 ## Key Features
 
+- **Google Sheets Integration:** Acts as the single source of truth. Fetches member lists in real-time and automatically syncs the "Last Reminder Sent" status back to the cloud.
+- **Flexible Joining/Leaving Months:** Drop an `NA` in any month column to cleanly exempt a member from paying dues for that specific month (handles mid-year joiners and early leavers naturally).
 - **Dynamic Dues Calculation:** Automatically calculates what a member owes based on the current month and their predefined monthly fee.
 - **Previous Year Balance Handling:** Optionally processes carried-over balances from a "Previous Balance" column and provides a clear breakdown in the message.
 - **WhatsApp Web DOM Interception:** Bypasses OS file upload dialogs by injecting JavaScript to intercept and unhide WhatsApp's native file input elements.
-- **Persistent Progress Tracking:** Saves successful sends to `progress.json`. If the script crashes or is stopped, it automatically resumes without double-messaging members.
+- **Persistent Progress Tracking:** Seamlessly skips members who have already been notified this month, preventing double-messaging. Saves progress directly to the Google Sheet (or local JSON as fallback).
 - **Smart Formatting:** Uses native `Shift+Enter` keystrokes to ensure line breaks are perfectly preserved within image captions, preventing squished text.
 - **Admin Summary Reports:** Generates a CSV of pending members and optionally WhatsApps a final summary to an administrator.
 - **Dry Run Mode:** Allows previewing calculations and message templates in the console without opening a browser or sending messages.
@@ -113,23 +115,26 @@ The application uses `undetected-chromedriver` to launch a Selenium session that
 ## Reliability and Recovery
 
 - **Retries:** Failed DOM interactions or element timeouts trigger a retry loop defined by `MAX_RETRIES`.
-- **Progress Persistence:** After every successful send, the phone number is written to `output/progress.json`.
-- **Resume Behavior:** If the script crashes or is interrupted, restarting it will load `progress.json` and skip members who were already messaged in the current calendar month.
+- **Progress Persistence:** After every successful send, the script natively updates a `Last Reminder Sent` column in your Google Sheet, or locally in `output/progress.json` if using Excel.
+- **Resume Behavior:** If the script crashes or is interrupted, restarting it will check the sheet/local file and skip members who were already messaged in the current calendar month.
 - **Reporting:** Failed sends are tracked and included in the final logs and the Admin Summary message.
 
 ## Data Format
 
-The system expects an Excel file at `data/members.xlsx` with `Sheet1` containing the data.
+The system expects a Google Sheet (or an Excel file at `data/members.xlsx`) with `Sheet1` containing the data.
 
-| Name     | Phone Number | Monthly Fee | Previous Balance | January | February | March |
-|----------|--------------|-------------|------------------|---------|----------|-------|
-| John Doe | 9876543210   | 500         | 1000             | 500     | 0        | 0     |
-| Jane Doe | 9123456789   | 500         | 0                | 500     | 500      | 500   |
+| Name     | Phone Number | Monthly Fee | Previous Balance | January | February | March | Last Reminder Sent |
+|----------|--------------|-------------|------------------|---------|----------|-------|--------------------|
+| John Doe | 9876543210   | 500         | 1000             | 500     | 0        | 0     | 2026-08            |
+| Jane Doe | 9123456789   | 500         | 0                | NA      | NA       | 500   |                    |
 
 - **Required Columns**: `Name`, `Phone Number`, `Monthly Fee`.
-- **Optional Columns**: `Previous Balance`.
+- **Optional/Auto Columns**: `Previous Balance`, `Last Reminder Sent` (script auto-generates/updates this).
 - **Month Columns**: Must be spelled out fully in English (e.g., `January`, `February`, etc.).
-- **Data Interpretation**: Month columns should contain the numeric amount paid. Empty cells or text are treated as 0. Phone numbers are automatically stripped of non-digit characters and prefixed with the country code if missing.
+- **Data Interpretation**: 
+  - Month columns should contain the numeric amount paid. Empty cells or text are treated as 0. 
+  - Type `NA`, `N/A`, or `-` in any month column to exempt a member from paying dues for that month (perfect for late joiners or early leavers).
+  - Phone numbers are automatically stripped of non-digit characters and prefixed with the country code if missing.
 
 ## Configuration
 
@@ -143,6 +148,8 @@ cp .env.example .env
 **Environment Variables (`.env`)**:
 - `COUNTRY_CODE`: The default country code for normalization (e.g., `91` for India).
 - `ADMIN_PHONE`: The phone number (with country code) that receives the end-of-run summary report. Leave blank to disable.
+- `GOOGLE_SHEET_URL`: The URL of your Google Sheet. Leave empty to fallback to local Excel uploads.
+- `GOOGLE_CREDENTIALS_PATH`: Path to your Service Account JSON key (defaults to `credentials.json`).
 
 **Application Configuration (`config.py`)**:
 - `SEND_DELAY_MIN` & `SEND_DELAY_MAX`: Defines the random sleep interval between sending messages to mimic human behavior.

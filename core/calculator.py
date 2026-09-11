@@ -40,9 +40,25 @@ def calculate_dues(df, ref=None):
 
     rows = []
     for _, row in df.iterrows():
-        fee      = float(row[config.COL_MONTHLY_FEE])
-        expected = fee * n
-        paid     = sum(float(row[m]) for m in active)
+        fee = float(row[config.COL_MONTHLY_FEE])
+        
+        expected = 0.0
+        paid = 0.0
+        active_months_count = 0
+        
+        for m in active:
+            val = str(row[m]).strip().upper()
+            if val in ['NA', 'N/A', '-', 'NOT APPLICABLE']:
+                # Fee not applicable for this month (e.g. joined late or left early)
+                continue
+                
+            expected += fee
+            active_months_count += 1
+            
+            try:
+                paid += float(val)
+            except ValueError:
+                pass
 
         # Get previous year balance
         prev = 0.0
@@ -60,7 +76,7 @@ def calculate_dues(df, ref=None):
             "phone":          row[config.COL_PHONE],
             "monthly_fee":    fee,
             "prev_balance":   round(prev, 2),
-            "active_months":  n,
+            "active_months":  active_months_count,
             "expected_total": round(expected, 2),
             "paid_total":     round(paid, 2),
             "due_amount":     due,

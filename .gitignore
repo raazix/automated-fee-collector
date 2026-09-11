@@ -14,3 +14,6 @@ assets/qr_payment.png
 
 # WhatsApp Profile
 .chrome_wa_profile/
+
+# Google Cloud Credentials
+credentials.json

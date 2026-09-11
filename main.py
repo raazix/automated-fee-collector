@@ -14,7 +14,7 @@ import sys
 from datetime import datetime
 
 import config
-from core.data_loader     import load_members
+from core.data_loader     import load_members, update_gsheet_status
 from core.calculator      import calculate_dues
 from core.message_builder import build_message, build_admin_summary
 from core.reporter        import generate_report
@@ -108,7 +108,17 @@ def run(dry_run=False, reset=False):
         return
 
     # 4. Load progress (resume if crashed mid-run)
-    already_sent  = _load_progress()
+    current_month_str = ref.strftime("%Y-%m")
+    already_sent = set()
+    
+    # Check Google Sheets status if available
+    if config.COL_LAST_REMINDER in dues_df.columns:
+        already_sent = set(dues_df[dues_df[config.COL_LAST_REMINDER] == current_month_str]["phone"].tolist())
+    
+    # Fallback to local file if empty
+    if not already_sent:
+        already_sent = _load_progress()
+        
     sent_phones   = list(already_sent)
     failed_phones = []
 
@@ -150,7 +160,11 @@ def run(dry_run=False, reset=False):
 
             if ok:
                 sent_phones.append(phone)
-                _save_progress(sent_phones)  # save after every success
+                _save_progress(sent_phones)  # save to local backup
+                
+                # Also save to Google Sheet if configured
+                if config.GOOGLE_SHEET_URL:
+                    update_gsheet_status(phone, current_month_str)
             else:
                 failed_phones.append(phone)
 
